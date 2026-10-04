@@ -1,0 +1,135 @@
+# ============================================================
+#  LY云计算 - Nginx 站点配置（生产环境模板）
+#  适用于 nginx + php8.2-fpm + mysql5.7
+# ============================================================
+#
+#  用法：
+#    1. 将本文件放到 /etc/nginx/conf.d/lycloud.conf
+#       （或 /etc/nginx/sites-available/lycloud 并软链到 sites-enabled/）
+#    2. 修改 server_name、root、fastcgi_pass
+#    3. nginx -t && nginx -s reload
+#
+# ============================================================
+
+server {
+    # ---------- 监听：同时支持 IPv4 / IPv6 ----------
+    listen       80;
+    listen       [::]:80;                 # IPv6 监听（本项目主打 IPv6 场景）
+    server_name  lycloud.example.com;     # ← 改成你的域名
+
+    # ---------- 网站根目录 ----------
+    # 注意：index.php 直接放在根目录，没有 /public
+    root  /www/wwwroot/lycloud;
+    index index.php index.html;
+
+    charset utf-8;
+    client_max_body_size 20m;
+
+    # ---------- 访问日志 ----------
+    access_log /var/log/nginx/lycloud.access.log;
+    error_log  /var/log/nginx/lycloud.error.log;
+
+    # ============================================================
+    #  安全拦截（必须放在 `location ~ \.php$` 之前！）
+    #
+    #  Nginx 的正则 location 是按「出现顺序」匹配的，第一个命中即生效。
+    #  若把下面的 deny 规则写在 `\.php$` 之后，访问 /config/config.php
+    #  会先命中 PHP 处理器并返回 200，把数据库密码直接吐出来。
+    # ============================================================
+
+    # 禁止直接访问源码 / 配置 / 缓存 / 测试目录
+    location ~ ^/(app|config|runtime|tests)/ {
+        deny all;
+        return 404;
+    }
+
+    # 安装目录：安装完成后请删除整个 install/ 目录；
+    # 若因故保留，至少要拦截 SQL 与文档文件
+    location ~ ^/install/.*\.(sql|md)$ {
+        deny all;
+        return 404;
+    }
+
+    # 禁止访问隐藏文件（.git、.env 等）
+    location ~ /\. {
+        deny all;
+        return 404;
+    }
+
+    # 禁止访问备份 / 日志 / 配置 / 部署文档类文件
+    location ~* \.(sql|log|ini|bak|conf|md|example|sh)$ {
+        deny all;
+        return 404;
+    }
+
+    # ---------- 伪静态 ----------
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # ---------- PHP 处理 ----------
+    location ~ \.php$ {
+        try_files $uri =404;
+        fastcgi_pass   unix:/run/php/php8.2-fpm.sock;   # ← 按实际 php-fpm 地址调整
+        fastcgi_index  index.php;
+        fastcgi_param  SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param  PATH_INFO       $fastcgi_path_info;
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        include        fastcgi_params;
+
+        # 支付宝异步通知需要较长超时
+        fastcgi_read_timeout 120s;
+        fastcgi_buffers      16 32k;
+    }
+
+    # ---------- 安装目录（保留时的 PHP 处理；删除 install/ 后本段可一并删除）----------
+    # 注意：若 install/ 已删除，此段无副作用；若保留，请优先按上文注释整体删除目录。
+    location ~ ^/install/.*\.php$ {
+        try_files $uri =404;
+        fastcgi_pass   unix:/run/php/php8.2-fpm.sock;
+        fastcgi_index  index.php;
+        fastcgi_param  SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include        fastcgi_params;
+    }
+
+    # ---------- 静态资源缓存 ----------
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)$ {
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        access_log off;
+    }
+
+    # ---------- 安全响应头 ----------
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+}
+
+# ============================================================
+#  HTTPS 配置（建议启用，支付宝正式环境要求回调地址可公网访问）
+# ============================================================
+# server {
+#     listen       443 ssl;
+#     listen       [::]:443 ssl;
+#     http2        on;
+#     server_name  lycloud.example.com;
+#
+#     root  /www/wwwroot/lycloud;
+#     index index.php index.html;
+#
+#     ssl_certificate      /etc/nginx/ssl/lycloud.crt;
+#     ssl_certificate_key  /etc/nginx/ssl/lycloud.key;
+#     ssl_protocols        TLSv1.2 TLSv1.3;
+#     ssl_ciphers          HIGH:!aNULL:!MD5;
+#     ssl_session_cache    shared:SSL:10m;
+#
+#     # ... 其余 location 配置与上方 80 端口一致 ...
+# }
+#
+# # HTTP 跳转 HTTPS
+# server {
+#     listen 80;
+#     listen [::]:80;
+#     server_name lycloud.example.com;
+#     return 301 https://$host$request_uri;
+# }
