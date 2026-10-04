@@ -1,0 +1,27 @@
+<?php
+/**
+ * LY云计算 配置文件模板
+ *
+ * 使用方式（二选一）：
+ *   A. 浏览器访问 http://你的域名/install/index.php 走安装向导（推荐，会校验连接并建表）
+ *   B. 手动把本文件复制为 config/config.php，按实际环境填写后
+ *      访问 install/index.php?step=sql 或直接导入 install/schema.sql
+ *
+ * ⚠️ 上线前务必修改默认管理员密码，并把数据库密码改成强密码。
+ */
+
+define('LY_CONFIG', [
+    'db' => [
+        'host'     => '127.0.0.1',   // 数据库地址
+        'port'     => 3306,          // 数据库端口
+        'database' => 'lycloud',     // 数据库名
+        'username' => 'lycloud',     // 数据库用户
+        'password' => 'change-me',   // ← 改成你的强密码
+    ],
+    // 站点根路径：部署在域名根目录留空；部署在 /shop 这类子目录填 '/shop'
+    'base_path' => '',
+    'timezone'  => 'Asia/Shanghai',
+]);
+
+define('LY_TIMEZONE', 'Asia/Shanghai');
+define('LY_VERSION', '1.7.13');
